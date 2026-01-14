@@ -1,11 +1,11 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 import os
-import tempfile
 from dotenv import load_dotenv
 import uvicorn
+import tempfile
 
 from services.pdf_processor import PDFProcessor
 from services.rag_service import RAGService
@@ -13,7 +13,7 @@ from services.mcq_generator import MCQGenerator
 
 load_dotenv()
 
-app = FastAPI(title="PDF RAG Application")
+app = FastAPI(title="PDF Learning Hub")
 
 # CORS middleware
 app.add_middleware(
@@ -29,6 +29,9 @@ pdf_processor = PDFProcessor()
 rag_service = RAGService()
 mcq_generator = MCQGenerator()
 
+# Store MCQ sessions temporarily (in production, use Redis or database)
+mcq_sessions: Dict[str, List[dict]] = {}
+
 # Pydantic models
 class ChatRequest(BaseModel):
     session_id: str
@@ -42,18 +45,40 @@ class MCQRequest(BaseModel):
     session_id: str
     num_questions: int
 
-class MCQOption(BaseModel):
+class MCQOptionPublic(BaseModel):
+    text: str
+
+class MCQQuestionPublic(BaseModel):
+    question_id: int
+    question: str
+    options: List[MCQOptionPublic]
+
+class MCQGenerateResponse(BaseModel):
+    test_id: str
+    questions: List[MCQQuestionPublic]
+
+class MCQSubmitRequest(BaseModel):
+    test_id: str
+    answers: Dict[int, int]  # question_id -> option_index
+
+class MCQOptionResult(BaseModel):
     text: str
     is_correct: bool
 
-class MCQQuestion(BaseModel):
+class MCQQuestionResult(BaseModel):
+    question_id: int
     question: str
-    options: List[MCQOption]
+    options: List[MCQOptionResult]
     explanation: str
     correct_answer: str
+    user_answer: Optional[int]
+    is_correct: bool
 
-class MCQResponse(BaseModel):
-    questions: List[MCQQuestion]
+class MCQSubmitResponse(BaseModel):
+    score: int
+    total: int
+    percentage: float
+    results: List[MCQQuestionResult]
 
 class UploadResponse(BaseModel):
     session_id: str
@@ -111,9 +136,9 @@ async def chat(request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error in chat: {str(e)}")
 
-@app.post("/generate-mcq", response_model=MCQResponse)
+@app.post("/generate-mcq", response_model=MCQGenerateResponse)
 async def generate_mcq(request: MCQRequest):
-    """Generate MCQ questions from the uploaded PDF"""
+    """Generate MCQ questions from the uploaded PDF (without answers)"""
     if request.num_questions < 1 or request.num_questions > 15:
         raise HTTPException(status_code=400, detail="Number of questions must be between 1 and 15")
     
@@ -121,12 +146,82 @@ async def generate_mcq(request: MCQRequest):
         # Get relevant chunks from vector DB
         chunks = rag_service.get_random_chunks(request.session_id, request.num_questions * 2)
         
-        # Generate MCQ questions
-        questions = mcq_generator.generate_questions(chunks, request.num_questions)
+        # Generate MCQ questions (with answers)
+        full_questions = mcq_generator.generate_questions(chunks, request.num_questions)
         
-        return MCQResponse(questions=questions)
+        # Generate unique test ID
+        import uuid
+        test_id = str(uuid.uuid4())
+        
+        # Store full questions with answers for later verification
+        mcq_sessions[test_id] = full_questions
+        
+        # Return questions without correct answers
+        public_questions = []
+        for idx, q in enumerate(full_questions):
+            public_questions.append({
+                "question_id": idx,
+                "question": q["question"],
+                "options": [{"text": opt["text"]} for opt in q["options"]]
+            })
+        
+        return MCQGenerateResponse(
+            test_id=test_id,
+            questions=public_questions
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating MCQ: {str(e)}")
+
+@app.post("/submit-mcq", response_model=MCQSubmitResponse)
+async def submit_mcq(request: MCQSubmitRequest):
+    """Submit MCQ answers and get results with correct answers and explanations"""
+    
+    # Get stored questions
+    if request.test_id not in mcq_sessions:
+        raise HTTPException(status_code=404, detail="Test not found or expired")
+    
+    full_questions = mcq_sessions[request.test_id]
+    
+    # Calculate results
+    results = []
+    correct_count = 0
+    
+    for idx, question in enumerate(full_questions):
+        user_answer = request.answers.get(idx)
+        
+        # Find correct answer index
+        correct_index = None
+        for opt_idx, opt in enumerate(question["options"]):
+            if opt["is_correct"]:
+                correct_index = opt_idx
+                break
+        
+        is_correct = user_answer == correct_index
+        if is_correct:
+            correct_count += 1
+        
+        results.append({
+            "question_id": idx,
+            "question": question["question"],
+            "options": question["options"],
+            "explanation": question["explanation"],
+            "correct_answer": question["correct_answer"],
+            "user_answer": user_answer,
+            "is_correct": is_correct
+        })
+    
+    total = len(full_questions)
+    percentage = (correct_count / total * 100) if total > 0 else 0
+    
+    # Clean up session after submission
+    del mcq_sessions[request.test_id]
+    
+    return MCQSubmitResponse(
+        score=correct_count,
+        total=total,
+        percentage=round(percentage, 2),
+        results=results
+    )
 
 @app.delete("/session/{session_id}")
 async def delete_session(session_id: str):

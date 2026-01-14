@@ -16,10 +16,9 @@ class RAGService:
         self.embedding_dim = 384  # Dimension for all-MiniLM-L6-v2
         
         # Initialize HuggingFace LLM (FREE!)
-        # Get free API key from: https://huggingface.co/settings/tokens
         hf_token = os.getenv("HUGGINGFACE_API_KEY")
         self.llm = InferenceClient(token=hf_token)
-        self.model_name = "mistralai/Mistral-7B-Instruct-v0.2"  # Free to use
+        self.model_name = "mistralai/Mistral-7B-Instruct-v0.2"
         
         # Collection name prefix
         self.collection_prefix = "pdf_collection_"
@@ -91,8 +90,11 @@ class RAGService:
         # Create context from relevant chunks
         context = "\n\n".join(relevant_chunks)
         
-        # Generate answer using LLM
-        prompt = f"""Based on the following context from the document, please answer the question.
+        # Generate answer using LLM with chat completion
+        messages = [
+            {
+                "role": "user",
+                "content": f"""Based on the following context from the document, please answer the question.
 
 Context:
 {context}
@@ -100,16 +102,17 @@ Context:
 Question: {query}
 
 Answer:"""
+            }
+        ]
         
         try:
-            response = self.llm.text_generation(
-                prompt,
+            response = self.llm.chat_completion(
+                messages=messages,
                 model=self.model_name,
-                max_new_tokens=500,
-                temperature=0.7,
-                return_full_text=False
+                max_tokens=500,
+                temperature=0.7
             )
-            answer = response
+            answer = response.choices[0].message.content
         except Exception as e:
             answer = f"Error generating answer: {str(e)}"
         
@@ -119,24 +122,39 @@ Answer:"""
         """Get random chunks from the collection for MCQ generation"""
         collection_name = self._get_collection_name(session_id)
         
-        # Get collection info to know total number of points
-        collection_info = self.client.get_collection(collection_name)
-        total_points = collection_info.points_count
-        
-        # Generate random IDs
-        num_to_fetch = min(num_chunks, total_points)
-        random_ids = random.sample(range(total_points), num_to_fetch)
-        
-        # Retrieve points
-        points = self.client.retrieve(
-            collection_name=collection_name,
-            ids=random_ids
-        )
-        
-        # Extract text
-        chunks = [point.payload["text"] for point in points]
-        
-        return chunks
+        try:
+            # Use scroll to get all points
+            scroll_result = self.client.scroll(
+                collection_name=collection_name,
+                limit=1000,  # Get up to 1000 chunks
+                with_payload=True,
+                with_vectors=False
+            )
+            
+            points = scroll_result[0]  # First element is the list of points
+            
+            # Extract text from points
+            all_chunks = [point.payload["text"] for point in points]
+            
+            # Return random selection
+            num_to_fetch = min(num_chunks, len(all_chunks))
+            if num_to_fetch == len(all_chunks):
+                return all_chunks
+            
+            return random.sample(all_chunks, num_to_fetch)
+            
+        except Exception as e:
+            print(f"Error getting random chunks: {str(e)}")
+            # Fallback: try to retrieve by sequential IDs
+            try:
+                # Try to retrieve first N chunks
+                points = self.client.retrieve(
+                    collection_name=collection_name,
+                    ids=list(range(num_chunks))
+                )
+                return [point.payload["text"] for point in points]
+            except:
+                return []
     
     def delete_session(self, session_id: str):
         """Delete a session's collection"""

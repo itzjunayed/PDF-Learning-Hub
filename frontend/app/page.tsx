@@ -32,7 +32,7 @@ export default function Home() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-2">
-            PDF RAG Application
+            PDF Learning Hub
           </h1>
           <p className="text-gray-600">
             Upload your PDF, chat with it, or generate MCQ questions
@@ -64,21 +64,19 @@ export default function Home() {
               <div className="flex gap-4">
                 <button
                   onClick={() => setMode('chat')}
-                  className={`flex-1 py-3 rounded-lg font-semibold transition ${
-                    mode === 'chat'
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                  className={`flex-1 py-3 rounded-lg font-semibold transition ${mode === 'chat'
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
                 >
                   💬 Chat Mode
                 </button>
                 <button
                   onClick={() => setMode('mcq')}
-                  className={`flex-1 py-3 rounded-lg font-semibold transition ${
-                    mode === 'mcq'
-                      ? 'bg-green-500 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
+                  className={`flex-1 py-3 rounded-lg font-semibold transition ${mode === 'mcq'
+                    ? 'bg-green-500 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
                 >
                   📝 MCQ Mode
                 </button>

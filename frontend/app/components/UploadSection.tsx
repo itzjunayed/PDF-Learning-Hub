@@ -127,11 +127,10 @@ export default function UploadSection({ onUploadComplete }: UploadSectionProps) 
         <button
           onClick={handleUpload}
           disabled={!file || isUploading}
-          className={`w-full py-3 rounded-lg font-semibold transition ${
-            !file || isUploading
-              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              : 'bg-blue-500 text-white hover:bg-blue-600'
-          }`}
+          className={`w-full py-3 rounded-lg font-semibold transition ${!file || isUploading
+            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            : 'bg-blue-500 text-white hover:bg-blue-600'
+            }`}
         >
           {isUploading ? 'Processing...' : 'Upload and Process'}
         </button>

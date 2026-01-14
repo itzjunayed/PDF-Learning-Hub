@@ -50,7 +50,6 @@ export default function ChatSection({ sessionId, apiUrl }: ChatSectionProps) {
       const assistantMessage: ChatMessage = {
         role: 'assistant',
         content: response.data.answer,
-        sources: response.data.sources,
       }
 
       setMessages((prev) => [...prev, assistantMessage])
@@ -107,22 +106,14 @@ export default function ChatSection({ sessionId, apiUrl }: ChatSectionProps) {
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[70%] rounded-lg p-4 ${
-                  message.role === 'user'
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-100 text-gray-800'
-                }`}
+                className={`max-w-[70%] rounded-lg p-4 ${message.role === 'user'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 text-gray-800'
+                  }`}
               >
                 <div className="prose prose-sm max-w-none">
                   <ReactMarkdown>{message.content}</ReactMarkdown>
                 </div>
-                {message.sources && message.sources.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-gray-300">
-                    <p className="text-xs text-gray-600">
-                      Sources: {message.sources.join(', ')}
-                    </p>
-                  </div>
-                )}
               </div>
             </div>
           ))
@@ -156,11 +147,10 @@ export default function ChatSection({ sessionId, apiUrl }: ChatSectionProps) {
           <button
             onClick={handleSend}
             disabled={!input.trim() || isLoading}
-            className={`px-6 py-2 rounded-lg font-semibold transition ${
-              !input.trim() || isLoading
-                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                : 'bg-blue-500 text-white hover:bg-blue-600'
-            }`}
+            className={`px-6 py-2 rounded-lg font-semibold transition ${!input.trim() || isLoading
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : 'bg-blue-500 text-white hover:bg-blue-600'
+              }`}
           >
             Send
           </button>
